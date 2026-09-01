@@ -1,0 +1,17 @@
+{
+  "metric": "median_monthly_wage_kzt",
+  "unit": "тенге в месяц, медиана по стране",
+  "source": "Бюро национальной статистики АСПиР РК",
+  "sourceUrl": "https://stat.gov.kz/ru/industries/labor-and-income/stat-wags/dynamic-tables/",
+  "sourceElement": 5678,
+  "fetchedAt": "2026-09-01",
+  "data": {
+    "2019": 112281,
+    "2020": 142718,
+    "2021": 165816,
+    "2022": 204149,
+    "2023": 251356,
+    "2024": 285677,
+    "2025": 317512
+  }
+}

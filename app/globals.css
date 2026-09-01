@@ -1,26 +1,59 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+
+  --surface-0: #f7f6f3;
+  --surface-1: #fcfcfb;
+  --border: #e2e0da;
+
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7c7a73;
+
+  --series-1: #2a78d6;
+  --accent-soft: #e8f0fc;
+  --critical: #c0322f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --surface-0: #121211;
+    --surface-1: #1a1a19;
+    --border: #302f2c;
+
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8d8b81;
+
+    --series-1: #3987e5;
+    --accent-soft: #1c2c40;
+    --critical: #e66767;
+  }
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-border: var(--border);
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-series-1: var(--series-1);
+  --color-accent-soft: var(--accent-soft);
+  --color-critical: var(--critical);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: var(--surface-0);
+  color: var(--text-primary);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Табличные цифры: числа в карточках не должны «прыгать» при смене города. */
+.tnum {
+  font-variant-numeric: tabular-nums;
 }
