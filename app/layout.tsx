@@ -6,18 +6,15 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin", "cyr
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin", "cyrillic"] });
 
 export const metadata: Metadata = {
-  title: "Сколько стоит стать взрослым",
+  title: "Интернет Астаны",
   description:
-    "Сколько лет нужно работать на квартиру в казахстанских городах — сейчас и поколение назад. На данных Бюро национальной статистики.",
+    "Карта скорости домашнего и мобильного интернета в Астане по кварталам и районам — на открытых данных Speedtest® by Ookla®.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="ru"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+    <html lang="ru" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <body className="h-full font-sans">{children}</body>
     </html>
   );
 }

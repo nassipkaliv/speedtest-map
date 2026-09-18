@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# копируется из node_modules перед dev/build
+/public/maplibre/

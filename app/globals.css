@@ -1,37 +1,21 @@
 @import "tailwindcss";
 
+/*
+ * Страница — это тёмная карта во весь экран, поэтому тема одна, тёмная.
+ * Цвета интерфейса и шкалы подобраны под фон карты OpenFreeMap Dark (#0c0c0c).
+ */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  --surface-0: #f7f6f3;
-  --surface-1: #fcfcfb;
-  --border: #e2e0da;
+  --surface-0: #0c0c0c;
+  --surface-1: #1a1a19;
+  --border: rgba(255, 255, 255, 0.1);
 
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #7c7a73;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
 
-  --series-1: #2a78d6;
-  --accent-soft: #e8f0fc;
-  --critical: #c0322f;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-
-    --surface-0: #121211;
-    --surface-1: #1a1a19;
-    --border: #302f2c;
-
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #8d8b81;
-
-    --series-1: #3987e5;
-    --accent-soft: #1c2c40;
-    --critical: #e66767;
-  }
+  --accent-soft: #1c2c40;
 }
 
 @theme inline {
@@ -41,9 +25,7 @@
   --color-primary: var(--text-primary);
   --color-secondary: var(--text-secondary);
   --color-muted: var(--text-muted);
-  --color-series-1: var(--series-1);
   --color-accent-soft: var(--accent-soft);
-  --color-critical: var(--critical);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -53,7 +35,31 @@ body {
   color: var(--text-primary);
 }
 
-/* Табличные цифры: числа в карточках не должны «прыгать» при смене города. */
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+@utility panel {
+  border-radius: 0.875rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  backdrop-filter: blur(12px);
+  padding: 1rem 1.125rem;
+}
+
+/*
+ * Атрибуция MapLibre по умолчанию белая. Его CSS грузится позже этого файла
+ * и использует селекторы из двух классов — поэтому здесь по три.
+ */
+.maplibregl-map .maplibregl-ctrl.maplibregl-ctrl-attrib,
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.maplibregl-map .maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-inner a {
+  color: var(--text-secondary);
+}
+.maplibregl-map .maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button {
+  filter: invert(1);
 }

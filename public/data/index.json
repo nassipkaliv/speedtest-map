@@ -1,0 +1,468 @@
+{
+  "city": "Астана",
+  "bbox": [
+    71.18,
+    50.97,
+    71.78,
+    51.32
+  ],
+  "generatedAt": "2026-09-18",
+  "datasets": [
+    {
+      "id": "fixed-2026-q2",
+      "type": "fixed",
+      "year": 2026,
+      "quarter": 2,
+      "file": "/data/fixed-2026-q2.json",
+      "city": {
+        "tiles": 1233,
+        "tests": 38508,
+        "devices": 15564,
+        "download": 176.6,
+        "upload": 169.8,
+        "latency": 6
+      },
+      "districts": {
+        "Есиль": {
+          "tiles": 512,
+          "tests": 22808,
+          "devices": 8974,
+          "download": 183.9,
+          "upload": 179,
+          "latency": 6
+        },
+        "Алматы": {
+          "tiles": 158,
+          "tests": 3944,
+          "devices": 1667,
+          "download": 173.8,
+          "upload": 161.1,
+          "latency": 6
+        },
+        "Сарыарка": {
+          "tiles": 149,
+          "tests": 4140,
+          "devices": 1747,
+          "download": 150.4,
+          "upload": 145.5,
+          "latency": 6
+        },
+        "Байконыр": {
+          "tiles": 100,
+          "tests": 2202,
+          "devices": 908,
+          "download": 158.2,
+          "upload": 145.5,
+          "latency": 7
+        },
+        "Нура": {
+          "tiles": 261,
+          "tests": 10593,
+          "devices": 4309,
+          "download": 186,
+          "upload": 185.8,
+          "latency": 5
+        }
+      }
+    },
+    {
+      "id": "fixed-2026-q1",
+      "type": "fixed",
+      "year": 2026,
+      "quarter": 1,
+      "file": "/data/fixed-2026-q1.json",
+      "city": {
+        "tiles": 1267,
+        "tests": 53825,
+        "devices": 19307,
+        "download": 173.1,
+        "upload": 162.2,
+        "latency": 6
+      },
+      "districts": {
+        "Есиль": {
+          "tiles": 489,
+          "tests": 29466,
+          "devices": 10442,
+          "download": 184.8,
+          "upload": 174.5,
+          "latency": 5
+        },
+        "Алматы": {
+          "tiles": 165,
+          "tests": 5469,
+          "devices": 2151,
+          "download": 164.1,
+          "upload": 149.3,
+          "latency": 6
+        },
+        "Сарыарка": {
+          "tiles": 150,
+          "tests": 7089,
+          "devices": 2441,
+          "download": 143.4,
+          "upload": 135,
+          "latency": 8
+        },
+        "Байконыр": {
+          "tiles": 111,
+          "tests": 3019,
+          "devices": 1169,
+          "download": 161.6,
+          "upload": 144.2,
+          "latency": 8
+        },
+        "Нура": {
+          "tiles": 239,
+          "tests": 13446,
+          "devices": 4949,
+          "download": 188.3,
+          "upload": 180.6,
+          "latency": 5
+        }
+      }
+    },
+    {
+      "id": "fixed-2025-q4",
+      "type": "fixed",
+      "year": 2025,
+      "quarter": 4,
+      "file": "/data/fixed-2025-q4.json",
+      "city": {
+        "tiles": 1304,
+        "tests": 54610,
+        "devices": 19820,
+        "download": 163.4,
+        "upload": 151.4,
+        "latency": 8
+      },
+      "districts": {
+        "Есиль": {
+          "tiles": 501,
+          "tests": 30448,
+          "devices": 10817,
+          "download": 173.7,
+          "upload": 162.7,
+          "latency": 7
+        },
+        "Алматы": {
+          "tiles": 179,
+          "tests": 5787,
+          "devices": 2252,
+          "download": 158,
+          "upload": 141.8,
+          "latency": 9
+        },
+        "Сарыарка": {
+          "tiles": 152,
+          "tests": 6032,
+          "devices": 2296,
+          "download": 132.9,
+          "upload": 122.8,
+          "latency": 9
+        },
+        "Байконыр": {
+          "tiles": 115,
+          "tests": 3173,
+          "devices": 1225,
+          "download": 146,
+          "upload": 127.8,
+          "latency": 15
+        },
+        "Нура": {
+          "tiles": 253,
+          "tests": 13972,
+          "devices": 5197,
+          "download": 174.5,
+          "upload": 167.6,
+          "latency": 7
+        }
+      }
+    },
+    {
+      "id": "fixed-2025-q3",
+      "type": "fixed",
+      "year": 2025,
+      "quarter": 3,
+      "file": "/data/fixed-2025-q3.json",
+      "city": {
+        "tiles": 1294,
+        "tests": 54575,
+        "devices": 20821,
+        "download": 155.9,
+        "upload": 147.9,
+        "latency": 7
+      },
+      "districts": {
+        "Есиль": {
+          "tiles": 491,
+          "tests": 30024,
+          "devices": 11489,
+          "download": 166.4,
+          "upload": 159.6,
+          "latency": 7
+        },
+        "Алматы": {
+          "tiles": 160,
+          "tests": 5799,
+          "devices": 2246,
+          "download": 145.5,
+          "upload": 131.9,
+          "latency": 7
+        },
+        "Сарыарка": {
+          "tiles": 149,
+          "tests": 6536,
+          "devices": 2413,
+          "download": 130.1,
+          "upload": 124.3,
+          "latency": 7
+        },
+        "Байконыр": {
+          "tiles": 122,
+          "tests": 3074,
+          "devices": 1368,
+          "download": 145.7,
+          "upload": 133.1,
+          "latency": 11
+        },
+        "Нура": {
+          "tiles": 257,
+          "tests": 14324,
+          "devices": 5612,
+          "download": 170.4,
+          "upload": 166.5,
+          "latency": 6
+        }
+      }
+    },
+    {
+      "id": "mobile-2026-q2",
+      "type": "mobile",
+      "year": 2026,
+      "quarter": 2,
+      "file": "/data/mobile-2026-q2.json",
+      "city": {
+        "tiles": 1439,
+        "tests": 19129,
+        "devices": 7783,
+        "download": 156,
+        "upload": 36,
+        "latency": 22
+      },
+      "districts": {
+        "Есиль": {
+          "tiles": 498,
+          "tests": 10020,
+          "devices": 3152,
+          "download": 159.3,
+          "upload": 36,
+          "latency": 24
+        },
+        "Алматы": {
+          "tiles": 206,
+          "tests": 2140,
+          "devices": 1192,
+          "download": 158.4,
+          "upload": 35.8,
+          "latency": 20
+        },
+        "Сарыарка": {
+          "tiles": 201,
+          "tests": 3044,
+          "devices": 1401,
+          "download": 153.9,
+          "upload": 35.4,
+          "latency": 21
+        },
+        "Байконыр": {
+          "tiles": 194,
+          "tests": 1611,
+          "devices": 892,
+          "download": 175,
+          "upload": 39.2,
+          "latency": 20
+        },
+        "Нура": {
+          "tiles": 249,
+          "tests": 2121,
+          "devices": 1350,
+          "download": 147.1,
+          "upload": 35.8,
+          "latency": 25
+        }
+      }
+    },
+    {
+      "id": "mobile-2026-q1",
+      "type": "mobile",
+      "year": 2026,
+      "quarter": 1,
+      "file": "/data/mobile-2026-q1.json",
+      "city": {
+        "tiles": 1391,
+        "tests": 28970,
+        "devices": 7643,
+        "download": 149.9,
+        "upload": 35.7,
+        "latency": 24
+      },
+      "districts": {
+        "Есиль": {
+          "tiles": 467,
+          "tests": 19089,
+          "devices": 2878,
+          "download": 144.3,
+          "upload": 34.8,
+          "latency": 25
+        },
+        "Алматы": {
+          "tiles": 197,
+          "tests": 2412,
+          "devices": 1263,
+          "download": 176.7,
+          "upload": 37.6,
+          "latency": 22
+        },
+        "Сарыарка": {
+          "tiles": 201,
+          "tests": 3261,
+          "devices": 1456,
+          "download": 142.3,
+          "upload": 36.8,
+          "latency": 22
+        },
+        "Байконыр": {
+          "tiles": 185,
+          "tests": 1767,
+          "devices": 947,
+          "download": 166.9,
+          "upload": 38.3,
+          "latency": 23
+        },
+        "Нура": {
+          "tiles": 239,
+          "tests": 2488,
+          "devices": 1232,
+          "download": 138.5,
+          "upload": 35,
+          "latency": 23
+        }
+      }
+    },
+    {
+      "id": "mobile-2025-q4",
+      "type": "mobile",
+      "year": 2025,
+      "quarter": 4,
+      "file": "/data/mobile-2025-q4.json",
+      "city": {
+        "tiles": 1369,
+        "tests": 24948,
+        "devices": 7470,
+        "download": 136.9,
+        "upload": 35.1,
+        "latency": 25
+      },
+      "districts": {
+        "Есиль": {
+          "tiles": 459,
+          "tests": 16068,
+          "devices": 2933,
+          "download": 136,
+          "upload": 35.1,
+          "latency": 25
+        },
+        "Алматы": {
+          "tiles": 201,
+          "tests": 1984,
+          "devices": 1159,
+          "download": 158.5,
+          "upload": 35.3,
+          "latency": 20
+        },
+        "Сарыарка": {
+          "tiles": 192,
+          "tests": 3313,
+          "devices": 1457,
+          "download": 134.3,
+          "upload": 36.8,
+          "latency": 24
+        },
+        "Байконыр": {
+          "tiles": 188,
+          "tests": 1572,
+          "devices": 876,
+          "download": 143.3,
+          "upload": 37.2,
+          "latency": 23
+        },
+        "Нура": {
+          "tiles": 239,
+          "tests": 2298,
+          "devices": 1310,
+          "download": 138.2,
+          "upload": 37.4,
+          "latency": 24
+        }
+      }
+    },
+    {
+      "id": "mobile-2025-q3",
+      "type": "mobile",
+      "year": 2025,
+      "quarter": 3,
+      "file": "/data/mobile-2025-q3.json",
+      "city": {
+        "tiles": 1398,
+        "tests": 14208,
+        "devices": 7963,
+        "download": 158.1,
+        "upload": 37,
+        "latency": 24
+      },
+      "districts": {
+        "Есиль": {
+          "tiles": 500,
+          "tests": 5796,
+          "devices": 3339,
+          "download": 165,
+          "upload": 37.8,
+          "latency": 25
+        },
+        "Алматы": {
+          "tiles": 186,
+          "tests": 2126,
+          "devices": 1219,
+          "download": 168.9,
+          "upload": 36.8,
+          "latency": 22
+        },
+        "Сарыарка": {
+          "tiles": 197,
+          "tests": 2815,
+          "devices": 1392,
+          "download": 151.1,
+          "upload": 39,
+          "latency": 21
+        },
+        "Байконыр": {
+          "tiles": 192,
+          "tests": 1633,
+          "devices": 938,
+          "download": 166.4,
+          "upload": 37.2,
+          "latency": 22
+        },
+        "Нура": {
+          "tiles": 250,
+          "tests": 2944,
+          "devices": 1545,
+          "download": 176.2,
+          "upload": 39.4,
+          "latency": 23
+        }
+      }
+    }
+  ]
+}
