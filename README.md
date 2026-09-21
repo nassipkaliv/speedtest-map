@@ -1,36 +1,119 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Интернет Астаны
 
-## Getting Started
+Карта скорости мобильного интернета и Wi-Fi в Астане по кварталам и районам. Можно найти адрес или нажать на любое место карты и увидеть скорость именно там: загрузку, отдачу, пинг и место среди остальных точек города.
 
-First, run the development server:
+Данные — открытый датасет Speedtest® by Ookla®, подложка карты — OpenStreetMap.
+
+## Быстрый старт
+
+Нужен Node.js 20.9 или новее.
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Откройте http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Команды
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Команда | Что делает |
+|---|---|
+| `npm run dev` | Режим разработки. Перед стартом копирует воркер MapLibre в `public/maplibre/` |
+| `npm run build` | Продакшен-сборка. Тоже копирует воркер |
+| `npm start` | Запуск собранной версии |
+| `npm run lint` | ESLint |
+| `npm run ingest` | Обновить данные: последние 4 квартала. `npm run ingest -- 8` — последние 8 |
 
-## Learn More
+## Как устроено
 
-To learn more about Next.js, take a look at the following resources:
+Отдельного бэкенда нет. Проект состоит из трёх частей:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Скрипт выгрузки** — запускается вручную, когда Ookla публикует новый квартал.
+2. **Готовые JSON-файлы** в `public/data/`, которые этот скрипт создаёт. Они лежат в репозитории.
+3. **Фронт в браузере** — читает эти файлы и сам обращается к двум внешним сервисам: за подложкой карты и за поиском адресов.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+ РАЗ В КВАРТАЛ, вручную                       КАЖДЫЙ РАЗ, в браузере пользователя
+ ──────────────────────                       ───────────────────────────────────
+ Ookla (Amazon S3) ─┐                          public/data/*.json ──→ точки и цифры
+                    ├→ npm run ingest ──→      OpenFreeMap ─────────→ улицы, вода, названия
+ OpenStreetMap ─────┘   (ingest-ookla.mjs)     Nominatim ───────────→ поиск адреса
+```
 
-## Deploy on Vercel
+Next.js только отдаёт страницу и файлы из `public/`: API-маршрутов и базы данных нет. `app/page.tsx` подключает `public/data/index.json` при сборке, поэтому страница собирается как статическая.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Выгрузка данных
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[`scripts/ingest-ookla.mjs`](scripts/ingest-ookla.mjs):
+
+1. Находит в открытом хранилище Ookla (`s3://ookla-open-data`, без ключа) последние кварталы — отдельно для Wi-Fi и для сотовой связи.
+2. Из каждого мирового файла (~350 МБ, Parquet) скачивает только кусок с Астаной. Файл отсортирован по quadkey, поэтому по статистике row group'ов читается одна группа из семи и только нужные колонки. Около 30 секунд на квартал.
+3. Один раз берёт границы пяти районов из OpenStreetMap через Nominatim. id отношений OSM зашиты в скрипте: Overpass часто отвечает таймаутом.
+4. Считает средние по городу и районам.
+5. Сохраняет результат:
+
+| Файл | Содержимое | Размер |
+|---|---|---|
+| `public/data/{fixed,mobile}-ГГГГ-qN.json` | Квадраты Астаны за квартал: `[quadkey, загрузка, отдача, пинг, тестов, устройств]` | ~50 КБ |
+| `public/data/index.json` | Список кварталов, сводки по городу и районам | ~10 КБ |
+| `public/data/districts.geojson` | Границы районов | ~16 КБ |
+
+Промежуточные выгрузки кэшируются в `$TMPDIR/ookla-astana-cache`. Если нужно скачать заново, удалите эту папку.
+
+### Фронт
+
+| Файл | Что делает |
+|---|---|
+| `app/layout.tsx`, `app/page.tsx` | Точка входа: шрифты, заголовок, передача `index.json` дальше |
+| `app/speed-map.tsx` | Главный компонент: выбранные тип сети, квартал и место; загрузка JSON; раскладка панелей для десктопа и телефона |
+| `app/map-canvas.tsx` | Карта на MapLibre: слои точек и районов, наведение, клики, метка выбранного места. Управляется снаружи через `MapController` |
+| `app/search-box.tsx` | Поиск адреса |
+| `app/place-card.tsx` | Карточка «скорость в этом месте» |
+| `app/city-summary.tsx`, `district-list.tsx`, `timeline.tsx`, `legend.tsx`, `about-dialog.tsx` | Остальные панели |
+| `app/ui.tsx` | Иконки, переключатель, кнопки карты |
+| `lib/tiles.ts` | Логика без интерфейса: шкала цветов, quadkey → координаты, скорость в точке, процентиль по городу, форматирование |
+| `lib/geocode.ts` | Запросы к Nominatim: адрес → координаты и обратно |
+
+### Карта
+
+Карта состоит из слоёв, которые рисует [MapLibre GL](https://maplibre.org) через WebGL:
+
+1. **Подложка** — улицы, вода, названия. Векторные тайлы [OpenFreeMap](https://openfreemap.org), стиль `dark`, без ключа. Браузер качает их с `tiles.openfreemap.org`, у нас они не хранятся. Подписи переключены на `name:ru`, иначе стиль рисует казахское и латинское название парами.
+2. **Точки скорости** — каждый квадрат Ookla становится точкой в своём центре. Цвет — загрузка, размер — число устройств. Слой лежит поверх дорог, но под названиями улиц.
+3. **Границы и подписи районов** — из `districts.geojson`.
+4. **Метка выбранного места** — HTML-элемент поверх карты.
+
+MapLibre 6 ищет свой воркер рядом с модулем, а после сборки модуль оказывается в чанке, где воркера нет. Поэтому [`scripts/copy-maplibre-worker.mjs`](scripts/copy-maplibre-worker.mjs) перед `dev` и `build` копирует воркер в `public/maplibre/` (папка в `.gitignore`), а карта указывает путь через `setWorkerUrl`. Если карта чёрная, первым делом проверьте эту папку.
+
+## Как считаются цифры
+
+- **Квадрат** — тайл z16 Web Mercator, в Астане около 610 × 385 м. Значение квадрата — среднее Ookla по всем тестам в нём за квартал.
+- **Средние по районам и городу взвешены по устройствам, а не по тестам.** В Есиле есть квадрат, где 32 устройства сделали 4 531 тест. При взвешивании по тестам он один тянет мобильную скорость района со 159 до 93 Мбит/с.
+- **Шкала** одна для Wi-Fi и сотовой: до 25 / 25–50 / 50–100 / 100–200 / 200+ Мбит/с. Цвета расходятся от серого «нормально» к красному и к синему. Палитра проверена на различимость при дальтонизме.
+- **Скорость в точке** берётся из своего квадрата, если в нём не меньше 3 тестов. Иначе — среднее по квадрату и восьми соседним, с весом по устройствам.
+- **«Быстрее, чем в N% мест»** — доля квадратов города с 3 и более тестами, где загрузка ниже.
+
+## Источники и лицензии
+
+| Что | Источник | Условия |
+|---|---|---|
+| Скорость | [Speedtest® by Ookla® Open Data](https://github.com/teamookla/ookla-open-data) | CC BY-NC-SA 4.0 — **только некоммерческое использование**, обязательна атрибуция Ookla (выводится в углу карты) |
+| Границы районов, адреса, подложка | [OpenStreetMap](https://www.openstreetmap.org/copyright) | ODbL, атрибуция обязательна |
+| Тайлы подложки | [OpenFreeMap](https://openfreemap.org) | Бесплатно, без ключа |
+| Поиск адресов | [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) | Не чаще запроса в секунду, без автодополнения |
+
+В датасет Ookla попадают только тесты из мобильных приложений Speedtest с точной геолокацией. «Wi-Fi» — это телефон, подключённый к Wi-Fi (дома, в кафе, в офисе), а не скорость тарифа. «Сотовая» — телефон в сети оператора.
+
+## Ограничения
+
+- Данные квартальные, не живые. Ookla публикует их вскоре после конца квартала.
+- Пустое место на карте означает, что там никто не запускал Speedtest, а не что там нет интернета.
+- Публичный Nominatim не рассчитан на продакшен-нагрузку.
+- Кнопка «Где я» работает только по HTTPS и на localhost.
+
+## Когда понадобится бэкенд
+
+- **Собственный спидтест**: сервер для замеров, база с PostGIS, приём результатов, защита от накрутки.
+- **Свой геокодер** — self-hosted Nominatim или Photon, либо платный сервис.
+- **Автообновление данных**: `npm run ingest` по расписанию вместо ручного запуска.
