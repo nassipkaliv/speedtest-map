@@ -1,77 +1,199 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Ref } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FeatureCollection } from 'geojson';
-import { MapCanvas, type Padding, type TileHover } from './map-canvas';
+import { reverseGeocode, type Place } from '@/lib/geocode';
 import {
-  RELIABLE_TESTS,
-  TIERS,
-  count,
-  delta,
+  NETWORKS,
+  districtAt,
+  indexTiles,
   mbps,
   plural,
   quarterLabel,
+  readingAt,
   tierOf,
-  tilesToGeoJSON,
+  tilesToPoints,
   type DataIndex,
   type Dataset,
   type NetworkType,
-  type Summary,
   type TileRow,
 } from '@/lib/tiles';
+import { AboutDialog } from './about-dialog';
+import { CitySummary } from './city-summary';
+import { DistrictList } from './district-list';
+import { Legend } from './legend';
+import { MapCanvas, type LngLat, type MapController, type Padding, type TileHover } from './map-canvas';
+import { PlaceCard, type Readings } from './place-card';
+import { SearchBox } from './search-box';
+import { Timeline } from './timeline';
+import { ExpandIcon, HelpIcon, LocateIcon, MapButton, MinusIcon, PlusIcon, Segmented } from './ui';
 
-const TYPES: { value: NetworkType; label: string }[] = [
-  { value: 'fixed', label: 'Домашний' },
-  { value: 'mobile', label: 'Мобильный' },
-];
+const TYPE_OPTIONS = (Object.keys(NETWORKS) as NetworkType[]).map((value) => ({
+  value,
+  label: NETWORKS[value].short,
+}));
 
 const periodOf = (d: Dataset) => `${d.year}-q${d.quarter}`;
+const DESKTOP = 1024;
 
 export function SpeedMap({ index }: { index: DataIndex }) {
   const [type, setType] = useState<NetworkType>('fixed');
   const [period, setPeriod] = useState<string | null>(null);
 
-  const series = useMemo(
-    () =>
-      index.datasets
-        .filter((d) => d.type === type)
-        .sort((a, b) => a.year - b.year || a.quarter - b.quarter),
-    [index.datasets, type]
+  const seriesOf = useCallback(
+    (t: NetworkType) =>
+      index.datasets.filter((d) => d.type === t).sort((a, b) => a.year - b.year || a.quarter - b.quarter),
+    [index.datasets]
   );
-  const position = Math.max(
-    0,
-    period == null ? series.length - 1 : series.findIndex((d) => periodOf(d) === period)
-  );
-  const dataset = series[position] ?? series[series.length - 1];
+  const series = useMemo(() => seriesOf(type), [seriesOf, type]);
+  const position = period == null ? series.length - 1 : Math.max(0, series.findIndex((d) => periodOf(d) === period));
+  const dataset = series[position];
   const previous = position > 0 ? series[position - 1] : null;
+  const activePeriod = periodOf(dataset);
 
-  const [tiles, setTiles] = useState<FeatureCollection | null>(null);
-  const [districts, setDistricts] = useState<FeatureCollection | null>(null);
+  // Для карточки места нужны оба типа сети за один и тот же квартал.
+  const pair = useMemo(() => {
+    const find = (t: NetworkType) => seriesOf(t).find((d) => periodOf(d) === activePeriod) ?? null;
+    return { fixed: find('fixed'), mobile: find('mobile') };
+  }, [seriesOf, activePeriod]);
+
+  /* ── Данные ─────────────────────────────────────────────────────────── */
+
+  const [rows, setRows] = useState<Record<string, TileRow[]>>({});
   const [failed, setFailed] = useState(false);
+  const [districts, setDistricts] = useState<FeatureCollection | null>(null);
+
+  // Файлы кварталов кэшируются по имени; запрошенные помним, чтобы не качать дважды.
+  const requested = useRef(new Set<string>());
+  useEffect(() => {
+    for (const d of [pair.fixed, pair.mobile]) {
+      if (!d || requested.current.has(d.file)) continue;
+      requested.current.add(d.file);
+      fetch(d.file)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((data: TileRow[]) => setRows((prev) => ({ ...prev, [d.file]: data })))
+        .catch(() => {
+          requested.current.delete(d.file);
+          setFailed(true);
+        });
+    }
+  }, [pair]);
+
+  useEffect(() => {
+    fetch('/data/districts.geojson')
+      .then((r) => r.json())
+      .then(setDistricts)
+      .catch(() => setDistricts(null));
+  }, []);
+
+  const points = useMemo(() => (rows[dataset.file] ? tilesToPoints(rows[dataset.file]) : null), [rows, dataset.file]);
+  const indexes = useMemo(
+    () => ({
+      fixed: pair.fixed && rows[pair.fixed.file] ? indexTiles(rows[pair.fixed.file]) : null,
+      mobile: pair.mobile && rows[pair.mobile.file] ? indexTiles(rows[pair.mobile.file]) : null,
+    }),
+    [pair, rows]
+  );
+
+  /* ── Выбранное место ────────────────────────────────────────────────── */
+
+  const map = useRef<MapController>(null);
+  const [place, setPlace] = useState<Place | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const reverse = useRef<AbortController | null>(null);
+
+  const readings: Readings | null = useMemo(() => {
+    if (!place) return null;
+    const read = (t: NetworkType) => {
+      if (!pair[t]) return null;
+      const idx = indexes[t];
+      return idx ? readingAt(idx, place.lon, place.lat) : undefined;
+    };
+    return { fixed: read('fixed'), mobile: read('mobile') };
+  }, [place, pair, indexes]);
+
+  const placeDistrict = place ? districtAt(districts, place.lon, place.lat) : null;
+
+  const pick = useCallback((at: LngLat) => {
+    setPlace({ ...at, title: 'Точка на карте', subtitle: null });
+    setResolving(true);
+    reverse.current?.abort();
+    const controller = new AbortController();
+    reverse.current = controller;
+    reverseGeocode(at.lon, at.lat, controller.signal)
+      .then((found) => found && !controller.signal.aborted && setPlace({ ...found, ...at }))
+      .catch(() => {})
+      .finally(() => !controller.signal.aborted && setResolving(false));
+  }, []);
+
+  const choose = useCallback((found: Place) => {
+    reverse.current?.abort();
+    setResolving(false);
+    setPlace(found);
+    map.current?.flyTo(found);
+  }, []);
+
+  const locate = () => {
+    if (!navigator.geolocation) return setNotice('Браузер не умеет определять местоположение.');
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const at = { lon: pos.coords.longitude, lat: pos.coords.latitude };
+        const [w, s, e, n] = index.bbox;
+        if (at.lon < w || at.lon > e || at.lat < s || at.lat > n) {
+          return setNotice('Похоже, вы не в Астане — карта пока только про неё.');
+        }
+        pick(at);
+        map.current?.flyTo(at);
+      },
+      () => {
+        setLocating(false);
+        setNotice('Не получилось определить местоположение — разрешите доступ к геолокации.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  /* ── Раскладка ──────────────────────────────────────────────────────── */
+
   const [hover, setHover] = useState<TileHover | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
-  const [focus, setFocus] = useState<{ name: string; nonce: number } | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [districtsOpen, setDistrictsOpen] = useState(false);
   const [padding, setPadding] = useState<Padding | null>(null);
 
-  const overviewRef = useRef<HTMLElement>(null);
-  const districtsRef = useRef<HTMLElement>(null);
+  const leftRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const sheetRef = useRef<HTMLElement>(null);
 
   /**
-   * Панели лежат поверх карты, поэтому город надо вписывать в оставшуюся
-   * часть экрана: на десктопе — между панелями, на телефоне — под сводкой.
-   * Меряем после того, как таблица районов на телефоне свернулась.
+   * Панели лежат поверх карты — город вписываем в оставшуюся часть экрана:
+   * на десктопе между колонками, на телефоне между поиском и шторкой.
+   * Меряем при загрузке и повороте экрана, а не при каждом изменении
+   * содержимого, чтобы карта не прыгала под пальцем.
    */
   useEffect(() => {
     const measure = () => {
-      const o = overviewRef.current?.getBoundingClientRect();
-      const d = districtsRef.current?.getBoundingClientRect();
-      if (!o || !d) return;
       const { innerWidth: w, innerHeight: h } = window;
-      setPadding(
-        w >= 640
-          ? { top: 0, bottom: 0, left: o.right, right: w - d.left }
-          : { top: o.bottom, bottom: h - d.top, left: 0, right: 0 }
-      );
+      if (w >= DESKTOP) {
+        const left = leftRef.current?.getBoundingClientRect();
+        const aside = asideRef.current?.getBoundingClientRect();
+        if (left && aside) setPadding({ top: 0, bottom: 0, left: left.right, right: w - aside.left });
+      } else {
+        const header = headerRef.current?.getBoundingClientRect();
+        const sheet = sheetRef.current?.getBoundingClientRect();
+        if (header && sheet) setPadding({ top: header.bottom, bottom: h - sheet.top, left: 0, right: 0 });
+      }
     };
     let frame = requestAnimationFrame(() => (frame = requestAnimationFrame(measure)));
     window.addEventListener('resize', measure);
@@ -81,365 +203,202 @@ export function SpeedMap({ index }: { index: DataIndex }) {
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    fetch(dataset.file)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((rows: TileRow[]) => active && (setTiles(tilesToGeoJSON(rows)), setFailed(false)))
-      .catch(() => active && setFailed(true));
-    return () => {
-      active = false;
-    };
-  }, [dataset.file]);
-
-  useEffect(() => {
-    fetch('/data/districts.geojson')
-      .then((r) => r.json())
-      .then(setDistricts)
-      .catch(() => setDistricts(null));
-  }, []);
+  const selectPeriod = (d: Dataset) => setPeriod(periodOf(d));
+  const showDistrict = (name: string) => {
+    setHighlighted(name);
+    map.current?.showDistrict(name);
+  };
 
   const quarters = series.map((d) => quarterLabel(d.year, d.quarter));
   const attribution = `<a href="https://github.com/teamookla/ookla-open-data" target="_blank" rel="noreferrer">Speedtest® by Ookla® Global Fixed and Mobile Network Performance Maps</a>. Based on analysis by Ookla of Speedtest Intelligence® data for ${quarters[0]} – ${quarters.at(-1)}. Provided by Ookla and accessed ${index.generatedAt}. Ookla trademarks used under license and reprinted with permission.`;
 
+  const placeCard = place && readings && (
+    <PlaceCard
+      place={place}
+      resolving={resolving}
+      district={placeDistrict}
+      readings={readings}
+      primary={type}
+      period={quarterLabel(dataset.year, dataset.quarter)}
+      onClose={() => setPlace(null)}
+    />
+  );
+
+  // На телефоне приближают щипком — кнопки масштаба там только занимают карту.
+  const zoomButtons = (
+    <>
+      <MapButton label="Приблизить" onClick={() => map.current?.zoomIn()}>
+        <PlusIcon />
+      </MapButton>
+      <MapButton label="Отдалить" onClick={() => map.current?.zoomOut()}>
+        <MinusIcon />
+      </MapButton>
+    </>
+  );
+  const controls = (
+    <>
+      <MapButton label="Весь город" onClick={() => map.current?.showCity()}>
+        <ExpandIcon />
+      </MapButton>
+      <MapButton label="Где я" onClick={locate} busy={locating}>
+        <LocateIcon />
+      </MapButton>
+      <MapButton label="Откуда данные" onClick={() => setAboutOpen(true)}>
+        <HelpIcon />
+      </MapButton>
+    </>
+  );
+
   return (
-    <main className="fixed inset-0 overflow-hidden bg-surface-0 text-primary">
+    <main
+      className="fixed inset-0 overflow-hidden bg-surface-0 text-primary"
+      // Кнопка атрибуции MapLibre живёт в правом нижнем углу — поднимаем её над шторкой.
+      style={{ '--map-bottom': `${padding?.bottom ?? 0}px` } as React.CSSProperties}
+    >
       <MapCanvas
         bbox={index.bbox}
-        tiles={tiles}
+        points={points}
         districts={districts}
         highlightedDistrict={highlighted}
-        focus={focus}
-        attribution={attribution}
+        pin={place}
         padding={padding}
+        attribution={attribution}
         onHover={setHover}
+        onPick={pick}
+        controller={map}
       />
 
-      {/* z-10: контролы MapLibre сами по себе z-index 2 и иначе оказываются поверх панелей. */}
-      <div className="pointer-events-none absolute inset-0 z-10 flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between sm:p-4">
-        <Overview
-          panelRef={overviewRef}
-          type={type}
-          onType={setType}
-          series={series}
-          dataset={dataset}
-          previous={previous}
-          onPeriod={setPeriod}
-          loading={!tiles && !failed}
-          failed={failed}
-        />
-        <Districts
-          panelRef={districtsRef}
-          dataset={dataset}
-          previous={previous}
-          onHighlight={setHighlighted}
-          onFocus={(name) => setFocus({ name, nonce: Date.now() })}
-        />
+      {/* Левая колонка: на десктопе поиск + сводка, на телефоне только поиск сверху. */}
+      <div
+        ref={leftRef}
+        className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col gap-3 lg:inset-x-auto lg:top-4 lg:left-4 lg:w-[380px]"
+      >
+        <section ref={headerRef} className="glass pointer-events-auto rounded-2xl p-3 lg:p-4">
+          <div className="mb-3 hidden items-baseline justify-between lg:flex">
+            <h1 className="text-lg font-semibold tracking-tight">Интернет Астаны</h1>
+            <span className="text-xs text-muted">по данным Speedtest®</span>
+          </div>
+          <SearchBox onSelect={choose} />
+          <div className="mt-2.5 flex gap-2">
+            <div className="flex-1">
+              <Segmented options={TYPE_OPTIONS} value={type} onChange={setType} label="Тип подключения" />
+            </div>
+            <select
+              value={activePeriod}
+              onChange={(e) => setPeriod(e.target.value)}
+              aria-label="Квартал"
+              className="h-10 rounded-xl bg-white/[0.06] px-2.5 text-sm text-primary outline-none lg:hidden"
+            >
+              {series.map((d) => (
+                <option key={d.id} value={periodOf(d)}>
+                  {quarterLabel(d.year, d.quarter)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="mt-3 hidden lg:block">
+            <Timeline series={series} activeId={dataset.id} onSelect={selectPeriod} />
+          </div>
+        </section>
+
+        <section className="glass pointer-events-auto hidden max-h-[calc(100vh-19rem)] overflow-y-auto rounded-2xl p-4 lg:block">
+          {placeCard ?? <CitySummary dataset={dataset} previous={previous} />}
+          {failed && <p className="mt-3 text-xs text-secondary">Часть данных не загрузилась — обновите страницу.</p>}
+        </section>
+
+        {/* Кнопки карты на телефоне — под поиском, справа. */}
+        <div className="pointer-events-auto flex flex-col items-end gap-2 self-end lg:hidden">{controls}</div>
       </div>
 
+      {/* Правая колонка на десктопе: районы. */}
+      <aside
+        ref={asideRef}
+        className="glass pointer-events-auto absolute top-4 right-4 z-10 hidden w-[300px] rounded-2xl p-4 lg:block"
+      >
+        <div className="mb-2 flex items-baseline justify-between px-2">
+          <h2 className="text-sm font-semibold">Районы</h2>
+          <span className="text-xs text-muted">
+            {NETWORKS[type].short}, Мбит/с
+          </span>
+        </div>
+        <DistrictList dataset={dataset} previous={previous} onHover={setHighlighted} onSelect={showDistrict} />
+      </aside>
+
+      {/* Легенда и кнопки на десктопе. */}
+      <div className="glass pointer-events-auto absolute bottom-4 left-4 z-10 hidden w-[380px] rounded-2xl px-4 py-3 lg:block">
+        <Legend />
+      </div>
+      <div className="absolute right-4 bottom-12 z-10 hidden flex-col gap-2 lg:flex">
+        {zoomButtons}
+        {controls}
+      </div>
+
+      {/* Шторка на телефоне: место или сводка, легенда, районы по кнопке. */}
+      <section
+        ref={sheetRef}
+        className="glass pointer-events-auto absolute inset-x-3 bottom-3 z-10 max-h-[55vh] overflow-y-auto rounded-2xl p-4 lg:hidden"
+      >
+        {placeCard ?? <CitySummary dataset={dataset} previous={previous} compact />}
+        <div className="mt-4 border-t border-white/[0.08] pt-3">
+          <Legend />
+        </div>
+        <button
+          type="button"
+          onClick={() => setDistrictsOpen((v) => !v)}
+          aria-expanded={districtsOpen}
+          className="mt-3 flex w-full items-center justify-between rounded-xl bg-white/[0.05] px-3 py-2.5 text-sm"
+        >
+          <span>Районы</span>
+          <span className="text-xs text-muted">{districtsOpen ? 'скрыть' : 'сравнить'}</span>
+        </button>
+        {districtsOpen && (
+          <div className="mt-2">
+            <DistrictList dataset={dataset} previous={previous} onHover={setHighlighted} onSelect={showDistrict} />
+          </div>
+        )}
+      </section>
+
       {hover && <Tooltip hover={hover} />}
+
+      {notice && (
+        <div className="glass pointer-events-none absolute top-1/2 left-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-xl px-4 py-3 text-sm text-primary">
+          {notice}
+        </div>
+      )}
+
+      {aboutOpen && <AboutDialog generatedAt={index.generatedAt} onClose={() => setAboutOpen(false)} />}
     </main>
   );
 }
 
-/* ── Сводка по городу ──────────────────────────────────────────────────── */
-
-function Overview({
-  panelRef,
-  type,
-  onType,
-  series,
-  dataset,
-  previous,
-  onPeriod,
-  loading,
-  failed,
-}: {
-  panelRef: Ref<HTMLElement>;
-  type: NetworkType;
-  onType: (t: NetworkType) => void;
-  series: Dataset[];
-  dataset: Dataset;
-  previous: Dataset | null;
-  onPeriod: (p: string) => void;
-  loading: boolean;
-  failed: boolean;
-}) {
-  const city = dataset.city;
-  const change = previous ? delta(city.download, previous.city.download) : null;
-
-  return (
-    <section
-      ref={panelRef}
-      className="panel pointer-events-auto flex max-h-[55vh] w-full flex-col gap-3 overflow-y-auto sm:max-h-[calc(100vh-2rem)] sm:w-[360px] sm:gap-4"
-    >
-      <header>
-        <p className="hidden text-xs font-medium tracking-[0.14em] text-muted uppercase sm:block">
-          Астана · интернет
-        </p>
-        <h1 className="text-lg font-semibold tracking-tight sm:mt-1 sm:text-xl">Где интернет быстрый, а где нет</h1>
-      </header>
-
-      <div className="flex flex-col gap-1.5 sm:gap-2">
-        <Segmented options={TYPES} value={type} onChange={onType} label="Тип подключения" />
-        <div className="grid grid-cols-4 gap-1" role="group" aria-label="Квартал">
-          {series.map((d) => {
-            const active = d.id === dataset.id;
-            return (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => onPeriod(periodOf(d))}
-                aria-pressed={active}
-                className={`h-8 rounded-md px-1 text-xs whitespace-nowrap transition-colors ${
-                  active
-                    ? 'bg-accent-soft font-medium text-primary'
-                    : 'text-secondary hover:bg-white/5 hover:text-primary'
-                }`}
-              >
-                {quarterLabel(d.year, d.quarter)}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div>
-        <div className="text-sm text-muted">Средняя загрузка по городу</div>
-        {/* На телефоне отдача и пинг встают справа от главной цифры, на десктопе — под ней. */}
-        <div className="mt-1 flex items-end justify-between gap-4 sm:block">
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2 whitespace-nowrap">
-              <span className="text-4xl leading-none font-semibold sm:text-5xl">{mbps(city.download)}</span>
-              <span className="text-base text-secondary sm:text-lg">Мбит/с</span>
-            </div>
-            {change && (
-              <div className="mt-2 text-sm whitespace-nowrap text-secondary">
-                <span className="text-primary">
-                  {change.pct >= 0 ? '▲' : '▼'} {change.text}
-                </span>{' '}
-                к {quarterLabel(previous!.year, previous!.quarter)}
-              </div>
-            )}
-          </div>
-          <dl className="grid shrink-0 grid-cols-2 gap-3 sm:mt-4">
-            <Stat term="Отдача" value={`${mbps(city.upload)} Мбит/с`} />
-            <Stat term="Пинг" value={`${city.latency} мс`} />
-          </dl>
-        </div>
-      </div>
-
-      <p className="hidden text-xs text-muted sm:block">
-        {count(city.devices)} {plural(city.devices, ['устройство', 'устройства', 'устройств'])} ·{' '}
-        {count(city.tests)} {plural(city.tests, ['тест', 'теста', 'тестов'])} · {count(city.tiles)}{' '}
-        {plural(city.tiles, ['квадрат', 'квадрата', 'квадратов'])}
-      </p>
-      {loading && <p className="text-xs text-muted">Загружаю квадраты…</p>}
-      {failed && <p className="text-xs text-secondary">Не удалось загрузить квадраты этого квартала.</p>}
-
-      <Legend />
-
-      <p className="text-xs leading-relaxed text-muted">
-        <span className="hidden sm:inline">
-          Квадрат ≈ 610 × 385 м — среднее по всем тестам в нём за квартал. Пусто — там никто не запускал тест.{' '}
-        </span>
-        Данные Speedtest® by Ookla®, карта © OpenStreetMap. Подробнее — ⓘ в углу карты.
-      </p>
-    </section>
-  );
-}
-
-function Stat({ term, value }: { term: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs text-muted">{term}</dt>
-      <dd className="mt-0.5 text-base font-medium whitespace-nowrap sm:text-lg">{value}</dd>
-    </div>
-  );
-}
-
-function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-  label,
-}: {
-  options: { value: T; label: string }[];
-  value: T;
-  onChange: (v: T) => void;
-  label: string;
-}) {
-  return (
-    <div className="flex rounded-lg border border-border p-0.5" role="group" aria-label={label}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          aria-pressed={value === o.value}
-          className={`h-9 flex-1 rounded-md text-sm transition-colors ${
-            value === o.value ? 'bg-accent-soft font-medium text-primary' : 'text-secondary hover:text-primary'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Legend() {
-  return (
-    <figure className="m-0">
-      <figcaption className="mb-2 text-xs text-muted">Загрузка, Мбит/с</figcaption>
-      <div className="flex gap-0.5">
-        {TIERS.map((t) => (
-          <div key={t.range} className="flex-1">
-            <div className="h-2.5 rounded-sm" style={{ background: t.color }} />
-            <div className="tnum mt-1.5 text-[11px] text-secondary">{t.range}</div>
-          </div>
-        ))}
-      </div>
-    </figure>
-  );
-}
-
-/* ── Районы ────────────────────────────────────────────────────────────── */
-
-function Districts({
-  panelRef,
-  dataset,
-  previous,
-  onHighlight,
-  onFocus,
-}: {
-  panelRef: Ref<HTMLElement>;
-  dataset: Dataset;
-  previous: Dataset | null;
-  onHighlight: (name: string | null) => void;
-  onFocus: (name: string) => void;
-}) {
-  // На телефоне таблица по умолчанию свёрнута — иначе она закрывает карту.
-  // Пока пользователь сам не нажал, состояние следует за шириной экрана.
-  const small = useIsSmallScreen();
-  const [choice, setChoice] = useState<boolean | null>(null);
-  const open = choice ?? !small;
-  const setOpen = (update: (v: boolean) => boolean) => setChoice(update(open));
-
-  const rows = Object.entries(dataset.districts)
-    .filter((entry): entry is [string, Summary] => entry[1] != null)
-    .sort((a, b) => b[1].download - a[1].download);
-
-  return (
-    <section ref={panelRef} className="panel pointer-events-auto mt-auto w-full sm:mt-0 sm:w-[340px]">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-baseline justify-between text-left"
-      >
-        <span>
-          <span className="text-base font-semibold">Районы</span>
-          <span className="ml-2 text-xs text-muted">{quarterLabel(dataset.year, dataset.quarter)}</span>
-        </span>
-        <span className="text-xs text-muted">{open ? 'свернуть' : 'показать'}</span>
-      </button>
-
-      {open && (
-        <>
-          <table className="mt-3 w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-muted">
-                <th className="pb-2 font-normal">Район</th>
-                <th className="pb-2 text-right font-normal">Загрузка</th>
-                <th className="pb-2 text-right font-normal">Отдача</th>
-                <th className="pb-2 text-right font-normal">Пинг</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(([name, s]) => {
-                const before = previous?.districts[name];
-                const change = before ? delta(s.download, before.download) : null;
-                return (
-                  <tr
-                    key={name}
-                    className="border-t border-border hover:bg-white/[0.04]"
-                    onMouseEnter={() => onHighlight(name)}
-                    onMouseLeave={() => onHighlight(null)}
-                  >
-                    <td className="py-2">
-                      <button
-                        type="button"
-                        onClick={() => onFocus(name)}
-                        onFocus={() => onHighlight(name)}
-                        onBlur={() => onHighlight(null)}
-                        className="flex items-center gap-2 text-left hover:underline"
-                        title="Показать на карте"
-                      >
-                        <span className="size-2.5 shrink-0 rounded-sm" style={{ background: tierOf(s.download).color }} />
-                        {name}
-                      </button>
-                    </td>
-                    <td className="tnum py-2 text-right">
-                      {mbps(s.download)}
-                      {change && <div className="text-[11px] text-muted">{change.text}</div>}
-                    </td>
-                    <td className="tnum py-2 text-right text-secondary">{mbps(s.upload)}</td>
-                    <td className="tnum py-2 text-right text-secondary">{s.latency} мс</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <p className="mt-3 text-xs leading-relaxed text-muted">
-            Мбит/с, средние по району взвешены по числу устройств, а не тестов — так пара автоматических
-            «тестеров» с тысячами замеров не перекашивает район. Изменение — к прошлому кварталу.
-          </p>
-        </>
-      )}
-    </section>
-  );
-}
-
-const SMALL_SCREEN = '(max-width: 639px)';
-
-function useIsSmallScreen() {
-  return useSyncExternalStore(
-    (notify) => {
-      const query = window.matchMedia(SMALL_SCREEN);
-      query.addEventListener('change', notify);
-      return () => query.removeEventListener('change', notify);
-    },
-    () => window.matchMedia(SMALL_SCREEN).matches,
-    () => false
-  );
-}
-
-/* ── Подсказка над квадратом ───────────────────────────────────────────── */
+/* ── Подсказка при наведении (только мышь) ─────────────────────────────── */
 
 function Tooltip({ hover }: { hover: TileHover }) {
   const { d, u, l, t, v } = hover.props;
   const tier = tierOf(d);
-  const flip = typeof window !== 'undefined' && hover.x > window.innerWidth - 260;
+  const flip = typeof window !== 'undefined' && hover.x > window.innerWidth - 240;
 
   return (
     <div
-      className="pointer-events-none absolute z-20 w-56 rounded-lg border border-border bg-surface-1 px-3 py-2.5 text-sm shadow-lg"
-      style={{ left: flip ? hover.x - 14 - 224 : hover.x + 14, top: hover.y + 14 }}
+      className="glass pointer-events-none absolute z-20 w-52 rounded-xl px-3 py-2.5 text-sm"
+      style={{ left: flip ? hover.x - 16 - 208 : hover.x + 16, top: hover.y + 16 }}
       role="status"
     >
-      <div className="flex items-center gap-2">
-        <span className="size-2.5 rounded-sm" style={{ background: tier.color }} />
-        <span className="font-medium">{tier.label}</span>
+      <div className="flex items-center gap-2 text-xs text-secondary">
+        <span className="size-2 rounded-full" style={{ background: tier.color }} />
+        {tier.label}
       </div>
-      <div className="tnum mt-1.5">
-        ↓ {mbps(d)} <span className="text-secondary">Мбит/с</span> · ↑ {mbps(u)}
+      <div className="mt-1 flex items-baseline gap-1">
+        <span className="text-xl font-semibold text-primary">{mbps(d)}</span>
+        <span className="text-xs text-secondary">Мбит/с</span>
       </div>
-      <div className="tnum text-secondary">пинг {l} мс</div>
-      <div className="mt-1 text-xs text-muted">
+      <div className="tnum text-xs text-secondary">
+        ↑ {mbps(u)} · пинг {l} мс
+      </div>
+      <div className="mt-1 text-[11px] text-muted">
         {t} {plural(t, ['тест', 'теста', 'тестов'])} · {v} {plural(v, ['устройство', 'устройства', 'устройств'])}
+        {' · нажмите для подробностей'}
       </div>
-      {t < RELIABLE_TESTS && <div className="mt-1 text-xs text-secondary">Мало тестов — значение ненадёжное</div>}
     </div>
   );
 }
